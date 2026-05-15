@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+
+  # ── Base de données ───────────────────────────────
+  postgres:
+    image: postgres:16-alpine          # PostgreSQL 18 n'est pas encore sur Docker Hub — 16 est compatible
+    container_name: digital_twin_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: digital_twin_mapping
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Microservice 1 — IFC Parser ──────────────────
+  ifc-parser-service:
+    build: ./ifc-parser-service
+    container_name: ifc_parser
+    ports:
+      - "8001:8001"
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+
+  # ── Microservice 2 — IoT Connector ───────────────
+  iot-connector-service:
+    build: ./iot-connector-service
+    container_name: iot_connector
+    ports:
+      - "8002:8002"
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+      - WAVEON_BASE_URL=https://iot.waveon.tn/WS_WAVEON
+    restart: unless-stopped
+
+  # ── Microservice 3 — Mapping ─────────────────────
+  mapping-service:
+    build: ./mapping-service
+    container_name: mapping_svc
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/digital_twin_mapping
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
